@@ -1,19 +1,23 @@
 import { useEffect, useState, useCallback } from "react";
 import { InteractiveMap } from "@/app/components/InteractiveMap";
 import { ReportForm } from "@/app/components/ReportForm";
-import { Report, ReportStatus, ReportMode, ReportType, ReportCategory } from "@/types/report";
+import { Report, ReportStatus } from "@/types/report";
 import { ReportDetail } from "@/app/components/ReportDetail";
 import { AdminPanel } from "@/app/components/AdminPanel";
 import { ProfileMenu } from "@/app/components/ProfileMenu";
-import { Plus, Layers, Map as MapIcon, X, User } from "lucide-react";
+import { LoginScreen } from "@/LoginScreen"; 
+import { Plus, Layers, Map as MapIcon, X, User, ArrowRight } from "lucide-react";
 import { toast, Toaster } from "sonner";
-import { signInAnonymously } from "firebase/auth";
+
+import type { User as FirebaseUser } from "firebase/auth";
 import { auth } from "@/firebase";
 import { listenReports, createReport } from "@/api/reports.firestore";
+import { listenAuth } from "@/auth";
 
 type UserMode = "citizen" | "agent";
 
 export default function App() {
+  // --- ÉTATS PARTAGÉS ---
   const [reports, setReports] = useState<Report[]>([]);
   const [userMode, setUserMode] = useState<UserMode>("citizen");
   const [showReportForm, setShowReportForm] = useState(false);
@@ -24,47 +28,54 @@ export default function App() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [userPoints, setUserPoints] = useState(347);
 
-  // --- LOGIQUE GÉOLOC ORIGINALE GITHUB ---
+  // --- ÉTATS AUTH & GÉOLOC ---
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
-  const [geoLoading, setGeoLoading] = useState(true);
 
-  const requestGeolocation = () => {
-    setGeoLoading(true);
-    setGeoError(null);
-
+  // --- LOGIQUE GÉOLOCALISATION (Version A) ---
+  const requestGeolocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setGeoError("La géolocalisation n’est pas supportée par ce navigateur.");
-      setGeoLoading(false);
+      setGeoError("Géolocalisation non supportée.");
       return;
     }
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setGeoError(null);
-        setGeoLoading(false);
       },
       (err) => {
-        let msg = "Impossible de récupérer votre localisation.";
-        if (err.code === err.PERMISSION_DENIED) msg = "Vous avez refusé l’accès à la localisation.";
-        else if (err.code === err.POSITION_UNAVAILABLE) msg = "Position indisponible (GPS/Wi-Fi).";
-        else if (err.code === err.TIMEOUT) msg = "La localisation a expiré (timeout).";
-        setGeoError(msg);
-        setGeoLoading(false);
+        setGeoError("Position indisponible.");
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
-  };
-
-  useEffect(() => { requestGeolocation(); }, []);
-
-  // --- LOGIQUE FIREBASE ---
-  useEffect(() => {
-    if (!auth.currentUser) signInAnonymously(auth).catch(console.error);
-    const unsub = listenReports(setReports);
-    return () => unsub();
   }, []);
+
+  // --- LOGIQUE AUTH & FIRESTORE (Version B) ---
+  useEffect(() => {
+    const unsubAuth = listenAuth((currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+      if (currentUser) requestGeolocation();
+    });
+    return () => unsubAuth();
+  }, [requestGeolocation]);
+
+  useEffect(() => {
+    if (user) {
+      const unsubReports = listenReports(setReports);
+      return () => unsubReports();
+    }
+  }, [user]);
+
+  // --- HANDLERS ---
+  const toggleUserMode = () => {
+    const newMode = userMode === "citizen" ? "agent" : "citizen";
+    setUserMode(newMode);
+    setShowAdminPanel(newMode === "agent");
+    toast.info(`Mode ${newMode === "agent" ? "Agent" : "Citoyen"} activé`);
+  };
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
     if (selectingLocation) {
@@ -77,13 +88,12 @@ export default function App() {
 
   const handleReportSubmit = async (data: any) => {
     try {
-      const uid = auth.currentUser?.uid ?? "anonymous";
       const newReport: Report = {
         ...data,
         id: crypto.randomUUID(),
         date: new Date().toISOString(),
         status: "nouveau",
-        reportedBy: uid,
+        reportedBy: user?.uid || "anonymous",
         validations: 0,
         validatedBy: [],
       };
@@ -97,9 +107,25 @@ export default function App() {
     }
   };
 
+  const handleStatusChange = (reportId: string, newStatus: ReportStatus) => {
+    // Ici vous pourriez ajouter l'appel API vers Firestore
+    setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: newStatus } : r));
+    toast.success("Statut mis à jour");
+  };
+
+  // --- DONNÉES UTILISATEUR ---
+  if (loading) return (
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mb-4"></div>
+      <p className="font-bold">Chargement d'aMELiorons...</p>
+    </div>
+  );
+
+  if (!user) return <LoginScreen />;
+
   const userData = {
-    name: "Sophie Martin",
-    photo: "https://images.unsplash.com/photo-1532272478764-53cd1fe53f72?w=100&h=100&fit=crop",
+    name: user.displayName || "Citoyen",
+    photo: user.photoURL || "https://images.unsplash.com/photo-1532272478764-53cd1fe53f72?w=100&h=100&fit=crop",
     points: userPoints,
     level: Math.floor(userPoints / 50),
     badge: "🏆 Contributeur expert",
@@ -109,62 +135,31 @@ export default function App() {
     <div className="h-screen w-screen relative bg-slate-900 overflow-hidden font-sans">
       <Toaster position="top-center" richColors />
 
-      {/* 1. CARTE (Plein écran avec logique GitHub) */}
+      {/* 1. CARTE PLEIN ÉCRAN */}
       <div className="absolute inset-0 z-0">
-        {geoLoading ? (
-          <div className="h-full w-full flex flex-col items-center justify-center bg-white">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p className="text-slate-500 font-medium italic">Récupération de votre localisation…</p>
-          </div>
-        ) : geoError || !userLocation ? (
-          <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-            <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 max-w-sm">
-              <h2 className="text-xl font-bold text-slate-800 mb-2">Localisation requise</h2>
-              <p className="text-slate-600 mb-6 text-sm">{geoError ?? "Localisation non disponible."}</p>
-              <button onClick={requestGeolocation} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-bold shadow-lg hover:bg-blue-700 transition-colors">
-                Réessayer
-              </button>
-            </div>
-            {/* Debug info GitHub */}
-            <div className="absolute bottom-2 left-2 z-30 bg-white/90 text-[10px] px-2 py-1 rounded border border-slate-200">
-               {geoError ? `geo: error (${geoError})` : `geo: ok (${userLocation?.lat.toFixed(5)}, ${userLocation?.lng.toFixed(5)})`}
-            </div>
-          </div>
-        ) : (
-          <InteractiveMap
-            reports={reports}
-            onReportClick={setSelectedReport}
-            onMapClick={handleMapClick}
-            selectedLocation={selectedLocation}
-            userLocation={userLocation}
-            zoom={19}
-          />
-        )}
+        <InteractiveMap
+          reports={reports}
+          onReportClick={setSelectedReport}
+          onMapClick={handleMapClick}
+          selectedLocation={selectedLocation}
+          userLocation={userLocation}
+          zoom={18}
+        />
       </div>
 
-      {/* 2. BOUTONS FLOTTANTS (Profil & Mode) */}
+      {/* 2. INTERFACE FLOTTANTE (Top Right) */}
       <div className="absolute top-4 right-4 z-40 flex flex-col items-end gap-3 pointer-events-none">
-        <button onClick={() => setShowProfileMenu(true)} className="bg-white/90 backdrop-blur-md p-1 rounded-full shadow-lg border border-white/40 pointer-events-auto hover:scale-105 transition-transform">
-          <div className="relative">
-            <img src={userData.photo} className="w-11 h-11 rounded-full object-cover shadow-inner" alt="Profil" />
-            <div className="absolute -bottom-1 -right-1 bg-blue-600 text-[10px] font-bold text-white w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-              {userData.level}
-            </div>
-          </div>
+        <button onClick={() => setShowProfileMenu(true)} className="bg-white/90 backdrop-blur-md p-1 rounded-full shadow-lg border border-white/40 pointer-events-auto">
+          <img src={userData.photo} className="w-11 h-11 rounded-full object-cover" alt="Profil" />
         </button>
 
-        <button onClick={() => {
-          const newMode = userMode === "citizen" ? "agent" : "citizen";
-          setUserMode(newMode);
-          setShowAdminPanel(newMode === "agent");
-          toast.info(`Mode ${newMode === "agent" ? "Agent" : "Citoyen"} activé`);
-        }} className={`pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-xl font-bold shadow-lg transition-all border ${userMode === "agent" ? "bg-emerald-500 border-emerald-400 text-white" : "bg-white/90 border-slate-200 text-slate-700 backdrop-blur-md"}`}>
+        <button onClick={toggleUserMode} className={`pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-xl font-bold shadow-lg transition-all border ${userMode === "agent" ? "bg-emerald-500 text-white" : "bg-white text-slate-700"}`}>
           {userMode === "agent" ? <Layers size={18} /> : <User size={18} />}
-          <span className="text-[10px] uppercase tracking-wider">{userMode === "agent" ? "Agent" : "Citoyen"}</span>
+          <span className="text-[10px] uppercase tracking-wider">{userMode === "agent" ? "Mode Agent" : "Mode Citoyen"}</span>
         </button>
       </div>
 
-      {/* 3. BARRE BASSE (Logo & Signalement) */}
+      {/* 3. LOGO & BOUTON SIGNALER (Bottom) */}
       <div className="absolute bottom-8 left-0 right-0 z-40 px-6 flex items-end justify-between pointer-events-none">
         <div className="bg-white/90 backdrop-blur-lg px-4 py-3 rounded-2xl shadow-xl border border-white/40 flex items-center gap-3 pointer-events-auto">
           <div className="bg-red-500 p-1.5 rounded-lg"><MapIcon className="text-white" size={18} /></div>
@@ -172,33 +167,46 @@ export default function App() {
         </div>
 
         {userMode === "citizen" && !showReportForm && !selectingLocation && (
-          <button onClick={() => setShowReportForm(true)} className="bg-blue-600 text-white p-5 rounded-3xl shadow-2xl hover:bg-blue-700 hover:scale-110 transition-all flex items-center gap-3 active:scale-95 pointer-events-auto">
+          <button onClick={() => setShowReportForm(true)} className="bg-blue-600 text-white p-5 rounded-3xl shadow-2xl hover:scale-110 transition-all flex items-center gap-3 pointer-events-auto">
             <Plus size={28} strokeWidth={3} />
-            <span className="font-bold pr-1 text-sm">Signaler</span>
+            <span className="font-bold text-sm">Signaler</span>
           </button>
         )}
       </div>
 
-      {/* 4. FORMULAIRES & DÉTAILS */}
+      {/* 4. MODALES & PANNEAUX */}
       {showReportForm && (
         <div className="absolute inset-0 z-50 flex items-end justify-center bg-slate-900/20 backdrop-blur-[2px]">
-          <div className="bg-white w-full max-w-md rounded-t-[40px] shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white px-8 py-6 border-b border-slate-50 flex items-center justify-between z-10">
-              <h2 className="text-xl font-bold text-slate-800">Signalement</h2>
-              <button onClick={() => setShowReportForm(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={24} className="text-slate-400" /></button>
+          <div className="bg-white w-full max-w-md rounded-t-[40px] shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="px-8 py-6 border-b flex items-center justify-between">
+              <h2 className="text-xl font-bold">Nouveau Signalement</h2>
+              <button onClick={() => setShowReportForm(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24} /></button>
             </div>
-            <ReportForm onSubmit={handleReportSubmit} onCancel={() => { setShowReportForm(false); setSelectedLocation(null); }} initialLocation={selectedLocation} onLocationSelect={() => { setShowReportForm(false); setSelectingLocation(true); toast.info("Où se trouve le problème ?"); }} />
+            <ReportForm 
+              onSubmit={handleReportSubmit} 
+              onCancel={() => { setShowReportForm(false); setSelectedLocation(null); }} 
+              initialLocation={selectedLocation} 
+              onLocationSelect={() => { setShowReportForm(false); setSelectingLocation(true); }} 
+            />
           </div>
         </div>
       )}
 
       {showAdminPanel && userMode === "agent" && (
-        <div className="absolute bottom-0 left-0 right-0 h-[65vh] z-40 bg-white rounded-t-[40px] shadow-2xl overflow-hidden border-t border-slate-100">
-           <AdminPanel reports={reports} onReportClick={setSelectedReport} onStatusChange={() => {}} onValidate={() => {}} />
+        <div className="absolute bottom-0 left-0 right-0 h-[65vh] z-40 bg-white rounded-t-[40px] shadow-2xl overflow-hidden">
+           <AdminPanel reports={reports} onReportClick={setSelectedReport} onStatusChange={handleStatusChange} onValidate={() => {}} />
         </div>
       )}
 
-      {selectedReport && <ReportDetail report={selectedReport} onClose={() => setSelectedReport(null)} isAdmin={userMode === "agent"} />}
+      {selectedReport && (
+        <ReportDetail 
+          report={selectedReport} 
+          onClose={() => setSelectedReport(null)} 
+          isAdmin={userMode === "agent"} 
+          onStatusChange={userMode === "agent" ? handleStatusChange : undefined}
+        />
+      )}
+
       <ProfileMenu isOpen={showProfileMenu} onClose={() => setShowProfileMenu(false)} userName={userData.name} userPhoto={userData.photo} points={userData.points} level={userData.level} badge={userData.badge} />
     </div>
   );
