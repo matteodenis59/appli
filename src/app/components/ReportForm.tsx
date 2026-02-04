@@ -319,6 +319,27 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, onLocationSele
             Envoyer
           </button>
         </div>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { id: 'probleme', label: 'Problème', icon: <AlertTriangle size={18}/>, color: 'bg-red-500' },
+            { id: 'mobilier', label: 'Mobilier', icon: <CheckCircle size={18}/>, color: 'bg-emerald-500' },
+            { id: 'suggestion', label: 'Idée', icon: '💡', color: 'bg-indigo-600' }
+          ].map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setMode(item.id as ReportMode)}
+              className={`flex flex-col items-center justify-center p-4 rounded-2xl transition-all border-2 ${
+                mode === item.id 
+                ? `${item.color} text-white border-transparent shadow-lg scale-105` 
+                : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'
+              }`}
+            >
+              <span className="mb-1">{item.icon}</span>
+              <span className="text-[11px] font-bold uppercase tracking-tighter">{item.label}</span>
+            </button>
+          ))}
+</div>
       </form>
     </div>
   );
