@@ -136,16 +136,29 @@ export default function App() {
       <Toaster position="top-center" richColors />
 
       {/* 1. CARTE PLEIN ÉCRAN */}
-      <div className="absolute inset-0 z-0">
-        <InteractiveMap
-          reports={reports}
-          onReportClick={setSelectedReport}
-          onMapClick={handleMapClick}
-          selectedLocation={selectedLocation}
-          userLocation={userLocation}
-          zoom={18}
-        />
-      </div>
+<div className="absolute inset-0 z-0">
+  {userLocation ? (
+    <InteractiveMap
+      reports={reports}
+      onReportClick={setSelectedReport}
+      onMapClick={handleMapClick}
+      selectedLocation={selectedLocation}
+      userLocation={userLocation} // Ici, on est sûr que userLocation n'est plus null
+      zoom={18}
+    />
+  ) : (
+    <div className="h-full w-full flex flex-col items-center justify-center bg-slate-900 text-white p-6 text-center">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-4"></div>
+      <p>Initialisation de la carte...</p>
+      {geoError && (
+        <div className="mt-4 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200">
+          {geoError}
+          <button onClick={() => window.location.reload()} className="block mt-2 underline">Réessayer</button>
+        </div>
+      )}
+    </div>
+  )}
+</div>
 
       {/* 2. INTERFACE FLOTTANTE (Top Right) */}
       <div className="absolute top-4 right-4 z-40 flex flex-col items-end gap-3 pointer-events-none">
