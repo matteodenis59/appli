@@ -92,7 +92,6 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
         {/* 1. SÉLECTEUR DE MODE */}
         <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
           {[
-            { id: 'probleme', label: 'Problème', icon: <AlertTriangle size={14}/>, color: 'bg-red-500' },
             { id: 'mobilier', label: 'Mobilier', icon: <CheckCircle size={14}/>, color: 'bg-emerald-500' },
             { id: 'suggestion', label: 'Idée', icon: <Lightbulb size={14}/>, color: 'bg-indigo-600' }
           ].map((item) => (
