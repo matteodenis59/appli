@@ -292,14 +292,14 @@ useEffect(() => {
       {selectedReport && <ReportDetail report={selectedReport} onClose={() => setSelectedReport(null)} isAdmin={userMode === "agent"} />}
       
       <ProfileMenu 
-        isOpen={showProfileMenu} 
-        onClose={() => setShowProfileMenu(false)} 
-        userName={userData.name} 
-        userPhoto={userData.photo} 
-        points={userData.points} 
-        level={userData.level} 
-        badge={userData.badge} 
-      />
+      isOpen={showProfileMenu} 
+      onClose={() => setShowProfileMenu(false)} 
+      userName={user?.displayName || "Citoyen"} 
+      userPhoto={user?.photoURL || "url_par_defaut"} 
+      points={userStats.points}     // Tes points Firestore
+      globalRank={userStats.globalRank} // Ton rang calculé
+      onLogout={() => auth.signOut()} 
+    />
     </div>
   );
 }
