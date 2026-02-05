@@ -8,8 +8,14 @@ import {
   query,
   setDoc,
   Timestamp,
+  where,
+  getDocs,
+  getCountFromServer
 } from "firebase/firestore";
 
+/**
+ * Écoute la liste des signalements en temps réel
+ */
 export function listenReports(cb: (reports: Report[]) => void) {
   const q = query(collection(db, "reports"), orderBy("date", "desc"));
 
@@ -27,6 +33,9 @@ export function listenReports(cb: (reports: Report[]) => void) {
   });
 }
 
+/**
+ * Crée un nouveau signalement dans Firestore
+ */
 export async function createReport(report: Report) {
   const payload: any = {
     id: report.id,
@@ -46,8 +55,34 @@ export async function createReport(report: Report) {
     validatedBy: report.validatedBy ?? [],
   };
 
-  // IMPORTANT : on n'ajoute "type" que s'il existe
   if (report.type) payload.type = report.type;
 
   await setDoc(doc(db, "reports", report.id), payload);
+}
+
+/**
+ * ✅ NOUVEAU : Écoute les données d'un utilisateur (points, etc.)
+ */
+export function listenUserData(uid: string, cb: (data: any) => void) {
+  return onSnapshot(doc(db, "users", uid), (snap) => {
+    if (snap.exists()) {
+      cb(snap.data());
+    } else {
+      cb({ points: 0 }); // Valeur par défaut si l'utilisateur n'existe pas encore
+    }
+  });
+}
+
+/**
+ * ✅ NOUVEAU : Calcule le rang mondial basé sur les points
+ */
+export async function getGlobalRank(points: number): Promise<number> {
+  if (points <= 0) return 0;
+  
+  // On compte combien d'utilisateurs ont plus de points que l'utilisateur actuel
+  const q = query(collection(db, "users"), where("points", ">", points));
+  const snapshot = await getCountFromServer(q);
+  
+  // Rang = Nombre de personnes devant + 1
+  return snapshot.data().count + 1;
 }
