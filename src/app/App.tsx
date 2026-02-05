@@ -112,27 +112,36 @@ useEffect(() => {
 
   // 4. ÉCOUTE DATA UTILISATEUR (Points & Rang)
   useEffect(() => {
-  if (user) {
-    // 1. Écouter les points en temps réel sur le document de l'utilisateur
-    const userRef = doc(db, "users", user.uid);
-    const unsub = onSnapshot(userRef, async (snap) => {
+  if (!user) return;
+
+  // On crée la référence au document
+  const userRef = doc(db, "users", user.uid);
+
+  // Écouteur temps réel pour les points
+  const unsub = onSnapshot(userRef, async (snap) => {
+    try {
       if (snap.exists()) {
-        const points = snap.data().points || 0;
-        
-        // 2. Calculer le rang (combien de personnes ont plus de points)
+        const currentPoints = snap.data().points || 0;
+
+        // Calcul du rang de manière isolée (sans bloquer le reste)
         const usersRef = collection(db, "users");
-        const q = query(usersRef, where("points", ">", points));
+        const q = query(usersRef, where("points", ">", currentPoints));
         const rankSnap = await getCountFromServer(q);
-        
-        setUserStats({ 
-          points: points, 
-          globalRank: rankSnap.data().count + 1 
+        const newRank = rankSnap.data().count + 1;
+
+        // On met à jour l'état une seule fois
+        setUserStats({
+          points: currentPoints,
+          globalRank: newRank
         });
       }
-    });
-    return () => unsub();
-  }
-}, [user]);
+    } catch (err) {
+      console.error("Erreur lors de la mise à jour des stats:", err);
+    }
+  });
+
+  return () => unsub();
+}, [user]); // Ne dépend que de l'utilisateur
 
   // --- HANDLERS ---
   const handleMapClick = useCallback((lat: number, lng: number) => {
