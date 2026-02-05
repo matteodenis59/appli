@@ -12,61 +12,98 @@ interface InteractiveMapProps {
   zoom?: number;
 }
 
-export function InteractiveMap({ reports, onReportClick, onMapClick, selectedLocation, userLocation, zoom = 16 }: InteractiveMapProps) {
+export function InteractiveMap({ reports, onReportClick, onMapClick, selectedLocation, userLocation, zoom = 19 }: InteractiveMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
 
-  // Reprise du créateur d'icônes original GitHub
+  // 1. Icônes des signalements (Style Pin moderne)
   const createCustomIcon = (report: Report) => {
-    let color = '#3b82f6';
+    let colorClass = 'from-blue-500 to-blue-600';
     let iconSymbol = '📍';
-    if (report.mode === 'suggestion') { color = '#4f46e5'; iconSymbol = '💡'; }
-    else if (report.status === 'nouveau') { color = '#ef4444'; iconSymbol = '⚠️'; }
-    else if (report.status === 'en_cours') { color = '#f59e0b'; iconSymbol = '🔧'; }
-    else if (report.status === 'resolu') { color = '#10b981'; iconSymbol = '✓'; }
+
+    if (report.mode === 'suggestion') {
+      colorClass = 'from-indigo-500 to-purple-600';
+      iconSymbol = '💡';
+    } else if (report.status === 'nouveau') {
+      colorClass = 'from-red-500 to-red-600';
+      iconSymbol = '⚠️';
+    } else if (report.status === 'en_cours') {
+      colorClass = 'from-amber-500 to-orange-600';
+      iconSymbol = '🔧';
+    } else if (report.status === 'resolu') {
+      colorClass = 'from-emerald-500 to-teal-600';
+      iconSymbol = '✅';
+    }
 
     return L.divIcon({
-      html: `<div style="background-color: ${color}; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); font-size: 16px;">${iconSymbol}</div>`,
-      className: 'custom-marker',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-      popupAnchor: [0, -16]
+      html: `
+        <div class="relative flex items-center justify-center">
+          <div class="absolute w-4 h-1 bg-black/20 rounded-full blur-[2px] bottom-[-18px]"></div>
+          <div class="bg-gradient-to-br ${colorClass} w-10 h-10 rounded-full rounded-bl-none rotate-[45deg] border-2 border-white shadow-lg flex items-center justify-center">
+            <span class="rotate-[-45deg] text-lg">${iconSymbol}</span>
+          </div>
+        </div>
+      `,
+      className: 'custom-marker-container',
+      iconSize: [40, 40],
+      iconAnchor: [20, 40],
+      popupAnchor: [0, -40]
     });
   };
 
-  // --- INITIALISATION STRICTE GITHUB ---
+  // 2. Initialisation de la carte (Logique GitHub)
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    const map = L.map(mapRef.current).setView([userLocation.lat, userLocation.lng], zoom ?? 19);
+    const map = L.map(mapRef.current).setView([userLocation.lat, userLocation.lng], zoom);
 
     L.tileLayer("https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
+      attribution: '&copy; Stadia Maps',
       maxZoom: 20,
     }).addTo(map);
 
     mapInstanceRef.current = map;
 
-    // FIX AFFICHAGE : Invalidation de la taille forcée après rendu
-    setTimeout(() => map.invalidateSize(), 0);
+    // Force l'affichage immédiat
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 200);
 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, []); // Tableau vide pour init unique
+  }, []);
 
-  // Gestion des clics
+  // 3. LE POINT BLEU (Localisation utilisateur)
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    const map = mapInstanceRef.current;
-    const handler = (e: L.LeafletMouseEvent) => { onMapClick?.(e.latlng.lat, e.latlng.lng); };
-    map.on("click", handler);
-    return () => { map.off("click", handler); };
-  }, [onMapClick]);
+    if (!mapInstanceRef.current || !userLocation) return;
 
-  // Gestion des marqueurs
+    // Supprimer l'ancien marqueur bleu s'il existe
+    const existing = (mapInstanceRef.current as any)._userMarker;
+    if (existing) mapInstanceRef.current.removeLayer(existing);
+
+    // Créer le point bleu pulsant
+    const userMarker = L.marker([userLocation.lat, userLocation.lng], {
+      icon: L.divIcon({
+        html: `
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-4 h-4 bg-blue-500 rounded-full animate-ping opacity-75"></div>
+            <div class="relative w-4 h-4 bg-blue-600 rounded-full border-2 border-white shadow-md"></div>
+          </div>
+        `,
+        className: '',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      }),
+      zIndexOffset: 1000 // Toujours au-dessus des autres
+    }).addTo(mapInstanceRef.current);
+
+    (mapInstanceRef.current as any)._userMarker = userMarker;
+  }, [userLocation]);
+
+  // 4. Gestion des marqueurs de signalements
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     markersRef.current.forEach(m => m.remove());
@@ -82,5 +119,22 @@ export function InteractiveMap({ reports, onReportClick, onMapClick, selectedLoc
     });
   }, [reports, onReportClick]);
 
-  return <div ref={mapRef} style={{ height: '100%', width: '100%' }} className="z-0" />;
+  // 5. Gestion du clic pour la sélection de position
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+    const handler = (e: L.LeafletMouseEvent) => {
+      onMapClick?.(e.latlng.lat, e.latlng.lng);
+    };
+    map.on("click", handler);
+    return () => { map.off("click", handler); };
+  }, [onMapClick]);
+
+  return (
+    <div 
+      ref={mapRef} 
+      className="h-full w-full outline-none" 
+      style={{ position: 'absolute', inset: 0 }} 
+    />
+  );
 }
