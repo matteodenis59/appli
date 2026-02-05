@@ -16,6 +16,14 @@ import { auth, db } from "@/firebase"; // ✅ Ajouté db
 import { listenReports, createReport, listenUserData, getGlobalRank } from "@/api/reports.firestore"; // ✅ Ajouté les fonctions de stats
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase";
+import { 
+  doc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  where, 
+  getCountFromServer 
+} from "firebase/firestore";
 
 type UserMode = "citizen" | "agent";
 
