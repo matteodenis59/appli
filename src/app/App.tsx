@@ -81,6 +81,17 @@ export default function App() {
     }
   }, [user]);
 
+  useEffect(() => {
+  if (user) {
+    // 1. Écouter les points en temps réel
+    const unsub = listenUserData(user.uid, async (data) => {
+      const rank = await getGlobalRank(data.points || 0);
+      setUserStats({ points: data.points || 0, globalRank: rank });
+    });
+    return () => unsub();
+  }
+}, [user]);
+
   // --- HANDLERS ---
   const toggleUserMode = () => {
     const newMode = userMode === "citizen" ? "agent" : "citizen";
@@ -112,7 +123,11 @@ export default function App() {
       await createReport(newReport);
       setShowReportForm(false);
       setSelectedLocation(null);
-      setUserPoints(p => p + (data.mode === "probleme" ? 20 : 10));
+      const pointsToAdd = data.mode === "probleme" ? 20 : 10;
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+         points: increment(pointsToAdd)
+      });
       toast.success("Signalement envoyé !");
     } catch (e) {
       toast.error("Erreur d'envoi");
@@ -140,10 +155,11 @@ export default function App() {
   // 3. Préparation des données une fois connecté
   const userData = {
     name: user.displayName || "Citoyen",
-    photo: user.photoURL || "https://images.unsplash.com/photo-1532272478764-53cd1fe53f72?w=100&h=100&fit=crop",
-    points: userPoints,
-    level: Math.floor(userPoints / 50),
-    badge: "🏆 Contributeur expert",
+    photo: user.photoURL || "...",
+    points: userStats.points,
+    level: Math.floor(userStats.points / 50),
+    rank: userStats.globalRank, // <-- Nouvelle donnée
+    badge: userStats.globalRank <= 3 ? "🥇 Top Contributeur" : "🏆 Citoyen Actif",
   };
 
   return (
