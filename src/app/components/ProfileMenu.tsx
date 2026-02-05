@@ -6,16 +6,33 @@ interface ProfileMenuProps {
   userName: string;
   userPhoto: string;
   points: number;
-  level: number;
-  badge: string;
+  globalRank: number; // Modifié : on passe le vrai rang global
+  onLogout: () => void; // Ajouté : pour gérer la déconnexion
 }
 
-export function ProfileMenu({ isOpen, onClose, userName, userPhoto, points, level, badge }: ProfileMenuProps) {
+export function ProfileMenu({ 
+  isOpen, 
+  onClose, 
+  userName, 
+  userPhoto, 
+  points, 
+  globalRank,
+  onLogout 
+}: ProfileMenuProps) {
+
+  // Logique pour déterminer le titre honorifique en fonction des points
+  const getStatusLabel = (pts: number) => {
+    if (pts >= 1000) return "Légende Urbaine";
+    if (pts >= 500) return "Expert Citoyen";
+    if (pts >= 200) return "Citoyen Actif";
+    return "Nouveau Citoyen";
+  };
+
   return (
     <>
       {/* Overlay sombre */}
       <div 
-        className={`fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-[60] transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[60] transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={onClose}
       />
 
@@ -31,18 +48,22 @@ export function ProfileMenu({ isOpen, onClose, userName, userPhoto, points, leve
           <div className="flex flex-col items-center">
             <div className="relative mb-4">
               <img src={userPhoto} alt={userName} className="w-24 h-24 rounded-full border-4 border-white/20 object-cover shadow-xl" />
-              <div className="absolute -bottom-1 -right-1 bg-blue-500 w-8 h-8 rounded-full flex items-center justify-center border-4 border-slate-800">
-                <span className="text-xs font-bold text-white">{level}</span>
+              <div className="absolute -bottom-1 -right-1 bg-blue-500 px-2 py-1 rounded-lg flex items-center justify-center border-2 border-slate-800 shadow-lg">
+                <span className="text-[10px] font-black text-white italic">LVL {Math.floor(points / 100)}</span>
               </div>
             </div>
             <h2 className="text-xl font-bold">{userName}</h2>
-            <p className="text-blue-300 text-sm font-medium uppercase tracking-widest mt-1">{badge}</p>
+            {/* Statut dynamique basé sur les points réels */}
+            <p className="text-blue-300 text-xs font-bold uppercase tracking-[0.2em] mt-1">
+              🏆 {getStatusLabel(points)}
+            </p>
           </div>
         </div>
 
         {/* Stats et Points */}
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-2 gap-4">
+            {/* Points réels de Firestore */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
               <div className="flex items-center gap-2 text-amber-600 mb-1">
                 <Trophy size={16} />
@@ -50,12 +71,16 @@ export function ProfileMenu({ isOpen, onClose, userName, userPhoto, points, leve
               </div>
               <p className="text-2xl font-black text-slate-800">{points}</p>
             </div>
+
+            {/* Rang global calculé */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
               <div className="flex items-center gap-2 text-blue-600 mb-1">
                 <ShieldCheck size={16} />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Rang</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider">Classement</span>
               </div>
-              <p className="text-2xl font-black text-slate-800">#{level + 2}</p>
+              <p className="text-2xl font-black text-slate-800">
+                #{globalRank || "--"}
+              </p>
             </div>
           </div>
 
@@ -68,7 +93,10 @@ export function ProfileMenu({ isOpen, onClose, userName, userPhoto, points, leve
               <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-full italic">Bientôt</span>
             </button>
             
-            <button className="w-full flex items-center gap-3 p-4 text-red-500 hover:bg-red-50 rounded-xl transition-colors mt-8 font-bold">
+            <button 
+              onClick={onLogout}
+              className="w-full flex items-center gap-3 p-4 text-red-500 hover:bg-red-50 rounded-xl transition-colors mt-8 font-bold"
+            >
               <LogOut size={20} />
               Déconnexion
             </button>
