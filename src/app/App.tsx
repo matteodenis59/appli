@@ -14,6 +14,8 @@ import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import { doc, updateDoc, increment } from "firebase/firestore"; // ✅ Ajouté
 import { auth, db } from "@/firebase"; // ✅ Ajouté db
 import { listenReports, createReport, listenUserData, getGlobalRank } from "@/api/reports.firestore"; // ✅ Ajouté les fonctions de stats
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "@/firebase";
 
 type UserMode = "citizen" | "agent";
 
@@ -61,21 +63,44 @@ export default function App() {
     );
   }, []);
 
-  // 1. GESTION DE L'AUTH
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+  // 1 & 2. GESTION DE L'AUTH, CRÉATION DE PROFIL & GÉOLOC
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    if (currentUser) {
+      // --- ÉTAPE A : GESTION FIRESTORE ---
+      const userRef = doc(db, "users", currentUser.uid);
+      
+      try {
+        const userSnap = await getDoc(userRef);
 
-  // 2. GÉOLOC APRÈS AUTH
-  useEffect(() => {
-    if (!authLoading && user) {
+        if (!userSnap.exists()) {
+          // Création initiale si le compte n'existe pas en base
+          await setDoc(userRef, {
+            uid: currentUser.uid,
+            displayName: currentUser.displayName || "Citoyen",
+            email: currentUser.email,
+            photoURL: currentUser.photoURL || "",
+            points: 347, // Score de départ
+            createdAt: new Date().toISOString()
+          });
+          console.log("Nouveau profil Firestore créé !");
+        }
+      } catch (error) {
+        console.error("Erreur Firestore lors de l'auth:", error);
+      }
+
+      // --- ÉTAPE B : MISE À JOUR ÉTAT & GÉOLOC ---
+      setUser(currentUser);
       requestGeolocation();
+    } else {
+      setUser(null);
     }
-  }, [authLoading, user, requestGeolocation]);
+    
+    setAuthLoading(false);
+  });
+
+  return () => unsubscribe();
+}, [requestGeolocation]);
 
   // 3. ÉCOUTE FIRESTORE (Reports)
   useEffect(() => {
