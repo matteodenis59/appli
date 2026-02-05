@@ -27,7 +27,7 @@ export default function App() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [userPoints, setUserPoints] = useState(347);
+  const [userStats, setUserStats] = useState({ points: 0, globalRank: 0 });
 
   // --- ÉTATS AUTH & GÉOLOC ---
   const [user, setUser] = useState<FirebaseUser | null>(null);
