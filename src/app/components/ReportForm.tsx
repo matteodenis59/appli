@@ -1,27 +1,9 @@
 import { useState } from 'react';
-import { Camera, X, Check, MapPin, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Camera, X, Check, MapPin, CheckCircle, AlertTriangle, Lightbulb, Trash2 } from 'lucide-react';
 import { ReportType, ReportCategory, ReportMode } from '@/types/report';
 
 const SUGGESTION_PLACEHOLDER_PHOTO = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
-  <defs>
-    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#EEF2FF"/>
-      <stop offset="1" stop-color="#E0E7FF"/>
-    </linearGradient>
-  </defs>
-  <rect width="1200" height="700" fill="url(#g)"/>
-  <g fill="#4F46E5" opacity="0.12">
-    <circle cx="180" cy="140" r="110"/>
-    <circle cx="1040" cy="170" r="130"/>
-    <circle cx="980" cy="560" r="150"/>
-    <circle cx="220" cy="540" r="150"/>
-  </g>
-  <g font-family="Poppins, Arial, sans-serif" text-anchor="middle">
-    <text x="600" y="330" font-size="44" fill="#111827" font-weight="700">Suggestion</text>
-    <text x="600" y="390" font-size="22" fill="#374151">Ajoute une photo si tu veux (facultatif)</text>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700"><rect width="1200" height="700" fill="#EEF2FF"/><text x="600" y="350" font-family="Arial" font-size="40" text-anchor="middle" fill="#4F46E5" font-weight="bold">Suggestion (Sans photo)</text></svg>
 `)}`;
 
 interface ReportFormProps {
@@ -44,302 +26,140 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, onLocationSele
   const [category, setCategory] = useState<ReportCategory>('autre');
   const [description, setDescription] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string>('');
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(initialLocation || null);
 
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    try {
-      const dataUrl = await fileToCompressedDataUrl(file, 1024, 1024, 0.65);
-      setPhotoPreview(dataUrl);
-      captureLocation(); // tu gardes ta logique actuelle
-    } catch (err) {
-      console.error("Erreur traitement photo:", err);
-      alert("Impossible de traiter la photo.");
-    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPhotoPreview(reader.result as string);
+      if (!location) captureLocation();
+    };
+    reader.readAsDataURL(file);
   };
-
-  async function fileToCompressedDataUrl(
-    file: File,
-    maxWidth = 1024,
-    maxHeight = 1024,
-    quality = 0.65
-  ): Promise<string> {
-    const img = document.createElement("img");
-    const url = URL.createObjectURL(file);
-
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Image load failed"));
-      img.src = url;
-    });
-
-    let { width, height } = img;
-
-    const scale = Math.min(maxWidth / width, maxHeight / height, 1);
-    width = Math.round(width * scale);
-    height = Math.round(height * scale);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas context not available");
-
-    ctx.drawImage(img, 0, 0, width, height);
-    URL.revokeObjectURL(url);
-
-    // JPEG compressé => beaucoup plus léger que PNG/base64 brut
-    return canvas.toDataURL("image/jpeg", quality);
-  }
-
 
   const captureLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const newLocation = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setLocation(newLocation);
-        },
-        (error) => {
-          console.error('Erreur de géolocalisation:', error);
-          // Utiliser une position par défaut (centre de Lille) si échec
-          setLocation({ lat: 50.6292, lng: 3.0573 });
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0
-        }
+        (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => setLocation({ lat: 50.6292, lng: 3.0573 }),
+        { enableHighAccuracy: true, timeout: 5000 }
       );
-    } else {
-      // Fallback si géolocalisation non disponible
-      setLocation({ lat: 50.6292, lng: 3.0573 });
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Champs obligatoires
-    if (!location || !description) {
-      alert('Veuillez remplir tous les champs obligatoires');
-      return;
-    }
-
-    // Photo obligatoire uniquement pour "problème" et "mobilier OK"
-    if (mode !== 'suggestion' && !photoPreview) {
-      alert('Veuillez ajouter une photo');
-      return;
-    }
-
+    if (!description) return alert('La description est requise');
+    if (mode !== 'suggestion' && !photoPreview) return alert('La photo est obligatoire');
+    
     onSubmit({
       mode,
       type: mode === 'probleme' ? type : undefined,
       category,
       description,
       photo: photoPreview || SUGGESTION_PLACEHOLDER_PHOTO,
-      location: location
+      location: location || { lat: 50.6292, lng: 3.0573 }
     });
   };
 
   return (
-    <div className="px-4 pb-4">
+    <div className="px-6 pb-8">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Mode de rapport */}
-        <div>
-          <label className="block text-sm font-medium mb-2">Type de signalement</label>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => setMode('probleme')}
-              className={`py-3 px-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                mode === 'probleme'
-                  ? 'bg-red-500 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <AlertTriangle size={18} />
-              Problème
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('mobilier')}
-              className={`py-3 px-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                mode === 'mobilier'
-                  ? 'bg-green-500 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <CheckCircle size={18} />
-              Mobilier OK
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('suggestion')}
-              className={`py-3 px-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                mode === 'suggestion'
-                  ? 'bg-indigo-600 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <span className="text-base leading-none">💡</span>
-              Suggestion
-            </button>
-          </div>
-          <p className="text-xs text-gray-500 mt-2">
-            <span className="font-medium">Suggestion</span> = proposer un nouveau mobilier, un aménagement, une idée pour simplifier la mobilité…
-          </p>
-        </div>
-
-        {/* Type de problème - Uniquement pour mode problème */}
-        {mode === 'probleme' && (
-          <div>
-            <label className="block text-sm font-medium mb-2">Type de problème</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['usure', 'vandalisme'] as ReportType[]).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setType(t)}
-                  className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                    type === t
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Catégorie */}
-        <div>
-          <label className="block text-sm font-medium mb-2">Catégorie</label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as ReportCategory)}
-            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="mobilier">Mobilier urbain</option>
-            <option value="signalisation">Signalisation</option>
-            <option value="mobilite">Mobilité</option>
-            <option value="autre">Autre</option>
-          </select>
-        </div>
-
-        {/* Description */}
-        <div>
-          <label className="block text-sm font-medium mb-2">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder={
-              mode === 'probleme'
-                ? 'Décrivez le problème constaté...'
-                : mode === 'mobilier'
-                  ? "Décrivez le mobilier (ex: Banc en bois, Panneau d'information...)"
-                  : "Décrivez votre idée (ex: ajouter un banc, créer une rampe, améliorer un passage piéton...)"
-            }
-            rows={3}
-            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-          />
-        </div>
-
-        {/* Photo */}
-        <div>
-          <label className="block text-sm font-medium mb-2">Photo</label>
-          {mode === 'suggestion' && (
-            <p className="text-xs text-gray-500 mb-2">
-              Optionnelle (tu peux illustrer l’endroit ou l’idée).
-            </p>
-          )}
-          {photoPreview ? (
-            <div className="relative">
-              <img
-                src={photoPreview}
-                alt="Preview"
-                className="w-full h-48 object-cover rounded-lg"
-              />
-              {location && (
-                <div className="absolute bottom-2 left-2 bg-green-500 text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-lg">
-                  <MapPin size={14} />
-                  Position capturée
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setPhotoPreview('');
-                  setLocation(null);
-                }}
-                className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          ) : (
-            <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-              <Camera size={32} className="text-gray-400 mb-2" />
-              <span className="text-sm text-gray-500">Cliquez pour prendre une photo</span>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handlePhotoCapture}
-                hidden
-              />
-
-            </label>
-          )}
-        </div>
-
-        {/* Boutons */}
-        <div className="flex gap-3 pt-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300"
-          >
-            Réinitialiser
-          </button>
-          <button
-            type="submit"
-            className="flex-1 py-3 px-4 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 flex items-center justify-center gap-2"
-          >
-            <Check size={20} />
-            Envoyer
-          </button>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
+        
+        {/* 1. SÉLECTEUR DE MODE (Compact Chips) */}
+        <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
           {[
-            { id: 'probleme', label: 'Problème', icon: <AlertTriangle size={18}/>, color: 'bg-red-500' },
-            { id: 'mobilier', label: 'Mobilier', icon: <CheckCircle size={18}/>, color: 'bg-emerald-500' },
-            { id: 'suggestion', label: 'Idée', icon: '💡', color: 'bg-indigo-600' }
+            { id: 'probleme', label: 'Problème', icon: <AlertTriangle size={14}/>, color: 'bg-red-500' },
+            { id: 'mobilier', label: 'Mobilier', icon: <CheckCircle size={14}/>, color: 'bg-emerald-500' },
+            { id: 'suggestion', label: 'Idée', icon: <Lightbulb size={14}/>, color: 'bg-indigo-600' }
           ].map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setMode(item.id as ReportMode)}
-              className={`flex flex-col items-center justify-center p-4 rounded-2xl transition-all border-2 ${
-                mode === item.id 
-                ? `${item.color} text-white border-transparent shadow-lg scale-105` 
-                : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                mode === item.id ? `${item.color} text-white shadow-md` : 'text-slate-500 hover:bg-slate-200'
               }`}
             >
-              <span className="mb-1">{item.icon}</span>
-              <span className="text-[11px] font-bold uppercase tracking-tighter">{item.label}</span>
+              {item.icon} {item.label}
             </button>
           ))}
-</div>
+        </div>
+
+        {/* 2. ÉDITION (Description & Catégorie dans un bloc) */}
+        <div className="bg-slate-50 rounded-[24px] p-4 border border-slate-100 space-y-3">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as ReportCategory)}
+            className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+          >
+            <option value="mobilier">🪑 Mobilier urbain</option>
+            <option value="signalisation">🚦 Signalisation</option>
+            <option value="mobilite">🚲 Mobilité</option>
+            <option value="autre">✨ Autre</option>
+          </select>
+
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Détails du signalement..."
+            rows={2}
+            className="w-full bg-transparent text-sm text-slate-600 focus:outline-none resize-none border-t border-slate-200 pt-3"
+            required
+          />
+        </div>
+
+        {/* 3. PHOTO & POSITION (Inline) */}
+        <div className="flex gap-3">
+          {photoPreview ? (
+            <div className="relative w-24 h-24 shrink-0">
+              <img src={photoPreview} className="w-full h-full object-cover rounded-2xl border-2 border-white shadow-md" alt="Preview" />
+              <button onClick={() => setPhotoPreview('')} className="absolute -top-2 -right-2 bg-slate-900 text-white p-1 rounded-full shadow-lg">
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <label className="w-24 h-24 shrink-0 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 text-slate-400 cursor-pointer hover:bg-slate-100 transition-colors">
+              <Camera size={24} />
+              <span className="text-[10px] font-bold mt-1 uppercase">Photo</span>
+              <input type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} hidden />
+            </label>
+          )}
+
+          <button
+            type="button"
+            onClick={onLocationSelect}
+            className={`flex-1 flex flex-col items-center justify-center rounded-2xl border-2 transition-all ${
+              location 
+              ? 'bg-emerald-50 border-emerald-100 text-emerald-600' 
+              : 'bg-blue-50 border-blue-100 text-blue-600 animate-pulse'
+            }`}
+          >
+            <MapPin size={24} />
+            <span className="text-[10px] font-bold mt-1 uppercase">
+              {location ? 'Lieu validé' : 'Placer sur la carte'}
+            </span>
+          </button>
+        </div>
+
+        {/* 4. ACTIONS FINALES */}
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="p-4 bg-slate-100 text-slate-500 rounded-2xl hover:bg-slate-200 transition-colors"
+          >
+            <Trash2 size={20} />
+          </button>
+          <button
+            type="submit"
+            className="flex-1 bg-blue-600 text-white rounded-2xl font-bold py-4 shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+            <Check size={20} /> Envoyer
+          </button>
+        </div>
       </form>
     </div>
   );
