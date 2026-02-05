@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Camera, X, Check, MapPin, CheckCircle, AlertTriangle, Lightbulb, Trash2 } from 'lucide-react';
+import { Camera, X, Check, MapPin, CheckCircle, Lightbulb, Trash2 } from 'lucide-react';
 import { ReportType, ReportCategory, ReportMode } from '@/types/report';
 import { toast } from 'sonner';
 
@@ -19,17 +19,14 @@ interface ReportFormProps {
 }
 
 export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, onLocationSelect }: ReportFormProps) {
-  const [mode, setMode] = useState<ReportMode>('probleme');
-  const [type, setType] = useState<ReportType>('usure');
+  // Par défaut sur 'mobilier' car 'probleme' est supprimé
+  const [mode, setMode] = useState<ReportMode>('mobilier');
   const [category, setCategory] = useState<ReportCategory>('autre');
   const [description, setDescription] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string>('');
   
-  // État local pour la position finale
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(initialLocation || userLocation);
 
-  // ✅ Correction : Synchronisation réactive de la localisation
-  // Si l'utilisateur n'a pas cliqué sur la carte, on suit le GPS en temps réel
   useEffect(() => {
     if (initialLocation) {
       setLocation(initialLocation);
@@ -49,9 +46,8 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // ✅ Sécurité : Vérifier si la localisation est disponible
     if (!location) {
-      toast.error("Localisation GPS non détectée. Veuillez réessayer ou cliquer sur la carte.");
+      toast.error("Localisation GPS non détectée. Veuillez cliquer sur la carte.");
       return;
     }
 
@@ -60,12 +56,12 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
       return;
     }
 
-    if (mode !== 'suggestion' && !photoPreview) {
-      toast.error('La photo est obligatoire pour ce type de signalement');
+    // Photo obligatoire pour le mobilier, facultative pour les idées
+    if (mode === 'mobilier' && !photoPreview) {
+      toast.error('La photo est obligatoire pour signaler du mobilier');
       return;
     }
 
-    // ✅ Correction Firebase : On construit l'objet sans champs 'undefined'
     const reportData: any = {
       mode,
       category,
@@ -77,11 +73,6 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
       }
     };
 
-    // On n'ajoute le type que si on est en mode "problème"
-    if (mode === 'probleme') {
-      reportData.type = type;
-    }
-
     onSubmit(reportData);
   };
 
@@ -89,7 +80,7 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
     <div className="px-5 pb-6">
       <form onSubmit={handleSubmit} className="space-y-3">
         
-        {/* 1. SÉLECTEUR DE MODE */}
+        {/* 1. SÉLECTEUR DE MODE (MOBILIER OU IDÉE UNIQUEMENT) */}
         <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
           {[
             { id: 'mobilier', label: 'Mobilier', icon: <CheckCircle size={14}/>, color: 'bg-emerald-500' },
@@ -110,24 +101,6 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
 
         {/* 2. ÉDITION COMPACTE */}
         <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 space-y-2">
-          {/* Sous-type si Problème */}
-          {mode === 'probleme' && (
-            <div className="flex gap-2 mb-2">
-              {['usure', 'vandalisme'].map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setType(t as ReportType)}
-                  className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase border transition-all ${
-                    type === t ? 'bg-orange-100 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-400'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
-
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value as ReportCategory)}
@@ -142,7 +115,7 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Que se passe-t-il ?"
+            placeholder={mode === 'suggestion' ? "Décrivez votre idée..." : "Décrivez le mobilier..."}
             rows={2}
             className="w-full bg-white border border-slate-200 p-3 rounded-xl text-sm text-slate-600 outline-none resize-none focus:ring-2 focus:ring-blue-100"
             required
