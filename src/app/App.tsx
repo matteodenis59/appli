@@ -264,8 +264,13 @@ export default function App() {
               <ReportForm 
                 onSubmit={handleReportSubmit} 
                 onCancel={() => { setShowReportForm(false); setSelectedLocation(null); }} 
-                initialLocation={selectedLocation} 
-                onLocationSelect={() => { setShowReportForm(false); setSelectingLocation(true); toast.info("Placez le marqueur sur la carte"); }} 
+                initialLocation={selectedLocation} // La position choisie sur la carte
+                userLocation={userLocation!}    // La position GPS actuelle (point bleu)
+                onLocationSelect={() => { 
+                  setShowReportForm(false); 
+                  setSelectingLocation(true); 
+                  toast.info("Touchez le lieu exact sur la carte"); 
+                }} 
               />
             </div>
           </div>
