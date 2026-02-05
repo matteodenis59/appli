@@ -112,14 +112,27 @@ useEffect(() => {
 
   // 4. ÉCOUTE DATA UTILISATEUR (Points & Rang)
   useEffect(() => {
-    if (user) {
-      const unsub = listenUserData(user.uid, async (data) => {
-        const rank = await getGlobalRank(data.points || 0);
-        setUserStats({ points: data.points || 0, globalRank: rank });
-      });
-      return () => unsub();
-    }
-  }, [user]);
+  if (user) {
+    // 1. Écouter les points en temps réel sur le document de l'utilisateur
+    const userRef = doc(db, "users", user.uid);
+    const unsub = onSnapshot(userRef, async (snap) => {
+      if (snap.exists()) {
+        const points = snap.data().points || 0;
+        
+        // 2. Calculer le rang (combien de personnes ont plus de points)
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("points", ">", points));
+        const rankSnap = await getCountFromServer(q);
+        
+        setUserStats({ 
+          points: points, 
+          globalRank: rankSnap.data().count + 1 
+        });
+      }
+    });
+    return () => unsub();
+  }
+}, [user]);
 
   // --- HANDLERS ---
   const handleMapClick = useCallback((lat: number, lng: number) => {
