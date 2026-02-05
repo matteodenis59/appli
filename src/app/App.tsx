@@ -96,26 +96,40 @@ export default function App() {
     }
   }, [selectingLocation]);
 
-  const handleReportSubmit = async (data: any) => {
-    try {
-      const newReport: Report = {
-        ...data,
-        id: crypto.randomUUID(),
-        date: new Date().toISOString(),
-        status: "nouveau",
-        reportedBy: user?.uid || "anonymous",
-        validations: 0,
-        validatedBy: [],
-      };
-      await createReport(newReport);
-      setShowReportForm(false);
-      setSelectedLocation(null);
-      setUserPoints(p => p + (data.mode === "probleme" ? 20 : 10));
-      toast.success("Signalement envoyé !");
-    } catch (e) {
-      toast.error("Erreur d'envoi");
-    }
-  };
+const handleReportSubmit = async (data: any) => {
+  try {
+    // On crée un objet propre sans valeurs undefined
+    const cleanLocation = {
+      lat: data.location?.lat || userLocation?.lat || 50.6292,
+      lng: data.location?.lng || userLocation?.lng || 3.0573
+    };
+
+    const newReport: Report = {
+      id: crypto.randomUUID(),
+      mode: data.mode,
+      category: data.category,
+      description: data.description,
+      photo: data.photo || "",
+      location: cleanLocation,
+      date: new Date().toISOString(),
+      status: "nouveau",
+      reportedBy: user?.uid || "anonymous",
+      validations: 0,
+      validatedBy: [],
+      // ✅ Correction : On n'ajoute 'type' que s'il existe vraiment
+      ...(data.type && { type: data.type }) 
+    };
+
+    await createReport(newReport);
+    setShowReportForm(false);
+    setSelectedLocation(null);
+    setUserPoints(p => p + (data.mode === "probleme" ? 20 : 10));
+    toast.success("Signalement envoyé !");
+  } catch (e) {
+    console.error("Erreur Firestore détaillée:", e); // Pour voir l'erreur réelle dans la console
+    toast.error("Erreur d'envoi (problème de connexion ou de données)");
+  }
+};
 
   // --- RENDU CONDITIONNEL ---
 

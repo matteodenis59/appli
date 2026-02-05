@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Camera, X, Check, MapPin, CheckCircle, AlertTriangle, Lightbulb, Trash2 } from 'lucide-react';
 import { ReportType, ReportCategory, ReportMode } from '@/types/report';
+import { toast } from 'sonner';
 
 interface ReportFormProps {
   onSubmit: (data: {
@@ -13,7 +14,7 @@ interface ReportFormProps {
   }) => void;
   onCancel: () => void;
   initialLocation?: { lat: number; lng: number } | null;
-  userLocation: { lat: number; lng: number }; // Ajout de la loc GPS
+  userLocation: { lat: number; lng: number } | null; 
   onLocationSelect: () => void;
 }
 
@@ -24,13 +25,18 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
   const [description, setDescription] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string>('');
   
-  // On initialise avec la position manuelle SI elle existe, sinon le GPS
-  const [location, setLocation] = useState<{ lat: number; lng: number }>(initialLocation || userLocation);
+  // État local pour la position finale
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(initialLocation || userLocation);
 
-  // Mettre à jour si une nouvelle position est choisie sur la carte
+  // ✅ Correction : Synchronisation réactive de la localisation
+  // Si l'utilisateur n'a pas cliqué sur la carte, on suit le GPS en temps réel
   useEffect(() => {
-    if (initialLocation) setLocation(initialLocation);
-  }, [initialLocation]);
+    if (initialLocation) {
+      setLocation(initialLocation);
+    } else if (userLocation) {
+      setLocation(userLocation);
+    }
+  }, [initialLocation, userLocation]);
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -42,24 +48,48 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!description) return alert('Description requise');
-    if (mode !== 'suggestion' && !photoPreview) return alert('Photo obligatoire');
-    
-    onSubmit({
+
+    // ✅ Sécurité : Vérifier si la localisation est disponible
+    if (!location) {
+      toast.error("Localisation GPS non détectée. Veuillez réessayer ou cliquer sur la carte.");
+      return;
+    }
+
+    if (!description) {
+      toast.error('La description est requise');
+      return;
+    }
+
+    if (mode !== 'suggestion' && !photoPreview) {
+      toast.error('La photo est obligatoire pour ce type de signalement');
+      return;
+    }
+
+    // ✅ Correction Firebase : On construit l'objet sans champs 'undefined'
+    const reportData: any = {
       mode,
-      type: mode === 'probleme' ? type : undefined,
       category,
       description,
       photo: photoPreview || "",
-      location
-    });
+      location: {
+        lat: location.lat,
+        lng: location.lng
+      }
+    };
+
+    // On n'ajoute le type que si on est en mode "problème"
+    if (mode === 'probleme') {
+      reportData.type = type;
+    }
+
+    onSubmit(reportData);
   };
 
   return (
     <div className="px-5 pb-6">
       <form onSubmit={handleSubmit} className="space-y-3">
         
-        {/* 1. SÉLECTEUR DE MODE (Très fin / "Celle du haut") */}
+        {/* 1. SÉLECTEUR DE MODE */}
         <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
           {[
             { id: 'probleme', label: 'Problème', icon: <AlertTriangle size={14}/>, color: 'bg-red-500' },
@@ -81,9 +111,24 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
 
         {/* 2. ÉDITION COMPACTE */}
         <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase px-1">
-             <span>Catégorie</span>
-          </div>
+          {/* Sous-type si Problème */}
+          {mode === 'probleme' && (
+            <div className="flex gap-2 mb-2">
+              {['usure', 'vandalisme'].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setType(t as ReportType)}
+                  className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase border transition-all ${
+                    type === t ? 'bg-orange-100 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-400'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value as ReportCategory)}
@@ -105,9 +150,8 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
           />
         </div>
 
-        {/* 3. PHOTO & LOCALISATION (Optimisé pour l'écran) */}
+        {/* 3. PHOTO & LOCALISATION */}
         <div className="flex gap-2">
-          {/* Bloc Photo */}
           {photoPreview ? (
             <div className="relative w-20 h-20 shrink-0">
               <img src={photoPreview} className="w-full h-full object-cover rounded-xl border border-slate-200" alt="Preview" />
@@ -123,7 +167,6 @@ export function ReportForm({ onSubmit, onCancel, initialLocation, userLocation, 
             </label>
           )}
 
-          {/* Bloc Localisation */}
           <button
             type="button"
             onClick={onLocationSelect}
